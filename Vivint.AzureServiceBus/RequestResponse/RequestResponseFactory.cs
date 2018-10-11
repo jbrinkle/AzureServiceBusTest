@@ -43,7 +43,7 @@ namespace Vivint.ServiceBus.RequestResponse
             {
                 await CreateRequestQueue(mc);
             }
-            else if ((await mc.GetQueueAsync(qRequest)).RequiresSession)
+            else if (await RequestQueueNotConfiguredRight(mc))
             {
                 await mc.DeleteQueueAsync(qRequest);
                 await CreateRequestQueue(mc);
@@ -53,11 +53,20 @@ namespace Vivint.ServiceBus.RequestResponse
             {
                 await CreateResponseQueue(mc);
             }
-            else if (false == (await mc.GetQueueAsync(qResponse)).RequiresSession)
+            else if (await ResponseQueueNotConfiguredRight(mc))
             {
                 await mc.DeleteQueueAsync(qResponse);
                 await CreateResponseQueue(mc);
             }
+        }
+
+        private async Task<bool> RequestQueueNotConfiguredRight(ManagementClient mc)
+        {
+            var q = await mc.GetQueueAsync(qRequest);
+
+            return q.RequiresSession ||
+                   q.LockDuration < TimeSpan.FromMinutes(1) ||
+                   q.DefaultMessageTimeToLive < TimeSpan.FromMinutes(20);
         }
 
         private async Task CreateRequestQueue(ManagementClient mc)
@@ -65,6 +74,7 @@ namespace Vivint.ServiceBus.RequestResponse
             var description = new QueueDescription(qRequest)
             {
                 DefaultMessageTimeToLive = TimeSpan.FromMinutes(20),
+                LockDuration = TimeSpan.FromMinutes(1),
                 EnablePartitioning = true,
                 RequiresDuplicateDetection = false,
                 RequiresSession = false,
@@ -73,11 +83,21 @@ namespace Vivint.ServiceBus.RequestResponse
             await mc.CreateQueueAsync(description);
         }
 
+        private async Task<bool> ResponseQueueNotConfiguredRight(ManagementClient mc)
+        {
+            var q = await mc.GetQueueAsync(qResponse);
+
+            return !q.RequiresSession ||
+                   q.LockDuration < TimeSpan.FromMinutes(1) ||
+                   q.DefaultMessageTimeToLive < TimeSpan.FromMinutes(20);
+        }
+
         private async Task CreateResponseQueue(ManagementClient mc)
         {
             var description = new QueueDescription(qResponse)
             {
                 DefaultMessageTimeToLive = TimeSpan.FromMinutes(20),
+                LockDuration = TimeSpan.FromMinutes(1),
                 EnablePartitioning = true,
                 RequiresDuplicateDetection = false,
                 RequiresSession = true,
