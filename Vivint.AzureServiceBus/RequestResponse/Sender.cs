@@ -14,7 +14,7 @@ namespace Vivint.ServiceBus.RequestResponse
         private readonly string connectionStr;
         private readonly string receiveResponseQueueName;
 
-        public event Action<Message> RequestSending;
+        public event Action<TRequest, Message> RequestSending;
 
         internal Sender(string connectionString, string queueSend, string queueReceive)
         {
@@ -32,7 +32,7 @@ namespace Vivint.ServiceBus.RequestResponse
             message.ReplyToSessionId = sessionId;
 
             // SEND!
-            RequestSending?.Invoke(message);
+            RequestSending?.Invoke(request, message);
             await client.SendAsync(message);
 
             // RECEIVE!

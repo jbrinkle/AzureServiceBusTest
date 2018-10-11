@@ -6,6 +6,8 @@ namespace ServiceBusTest
 {
     class GetLoanOptionsRequestPayload
     {
+        public int Id { get; set; }
+
         public int CreditScore { get; set; }
     }
 

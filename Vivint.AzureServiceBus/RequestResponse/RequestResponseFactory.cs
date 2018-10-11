@@ -14,11 +14,9 @@ namespace Vivint.ServiceBus.RequestResponse
          *  http://cloudcasts.azurewebsites.net/devguide/Default.aspx?id=13051
          */
 
-
         private readonly string connectionString;
         private readonly string qRequest;
         private readonly string qResponse;
-        private readonly TextWriter output;
 
         public RequestResponseFactory(string connectionString, string qRequest, string qResponse)
         {

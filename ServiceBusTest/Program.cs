@@ -13,6 +13,7 @@ namespace ServiceBusTest
     class Program
     {
         private static readonly Dictionary<string, string> config = new Dictionary<string, string>();
+        private static ConsoleLogger logger;
 
         static void Main(string[] args)
         {
@@ -21,6 +22,10 @@ namespace ServiceBusTest
 
             if (!Config.ParseArgs(args, Console.Out))
                 return;
+
+            logger = new ConsoleLogger(Console.Out);
+            logger.Start();
+            Console.CancelKeyPress += Console_CancelKeyPress;
 
             try
             {
@@ -49,6 +54,19 @@ namespace ServiceBusTest
             }
         }
 
+        private static void Console_CancelKeyPress(object sender, ConsoleCancelEventArgs e)
+        {
+            var origColor = Console.ForegroundColor;
+            Console.ForegroundColor = ConsoleColor.Yellow;
+            Console.WriteLine("Canceling operation...");
+            Console.ForegroundColor = origColor;
+
+            if (logger?.IsActive ?? false)
+            {
+                logger.Stop();
+            }
+        }
+
         static async Task TimeOperation(Func<Task> action)
         {
             var sw = new Stopwatch();
@@ -69,29 +87,32 @@ namespace ServiceBusTest
             var requestsToSend = GetFirstNumberInActionArgs();
 
             var sender = factory.GetSender<GetLoanOptionsRequestPayload, GetLoanOptionsResponsePayload>();
-            sender.RequestSending += m => Console.WriteLine($"SessionId = {m.ReplyToSessionId}");
+            sender.RequestSending += (r,m) =>
+            {
+                logger.WriteOutput($"{r.Id:000} REQUEST: CreditScore = {r.CreditScore}, SessionId = {m.ReplyToSessionId}");
+            };
             var random = new Random();
             var outstandingRequests = new Task[requestsToSend];
 
-            Console.WriteLine("Sending requests...");
+            logger.WriteOutput("Sending requests...");
 
             for (var i = 0; i < requestsToSend; i++)
             {
                 var payload = new GetLoanOptionsRequestPayload
                 {
+                    Id = i,
                     CreditScore = random.Next(300, 801)
                 };
-
-                Console.Write($"{i:000} Request: CreditScore = {payload.CreditScore}, ");
 
                 var rememberI = i;
                 outstandingRequests[i] = sender.SendRequest(payload).ContinueWith(async t => {
                     var response = await t;
-                    Console.WriteLine($"{rememberI:000} Response: Provider = {response.Provider}, Loan = {response.LoanAmount}");
+                    logger.WriteOutput($"{rememberI:000} RESPONSE: Provider = {response.Provider}, Loan = {response.LoanAmount}");
                 });
             }
 
             await Task.WhenAll(outstandingRequests);
+            logger.Stop();
         }
 
         static async Task RunConsumer(RequestResponseFactory factory)
@@ -113,15 +134,15 @@ namespace ServiceBusTest
                             LoanAmount = request.CreditScore * 4
                         };
                     });
-                    responder.RequestReceived += m => Console.Write($"SessionId = {m.ReplyToSessionId}...");
-                    responder.ResponseSending += m => Console.WriteLine("Sending response");
-                    responder.ExceptionOccurred += args => Console.WriteLine($"Fatal: {args.Exception.GetType().Name} {args.Exception.Message}");
+                    responder.RequestReceived += m => logger.WriteOutput($"Incoming: SessionId = {m.ReplyToSessionId}");
+                    responder.ResponseSending += m => logger.WriteOutput($"Outgoing: SessionId = {m.SessionId}");
+                    responder.ExceptionOccurred += args => logger.WriteOutput($"Fatal: {args.Exception.GetType().Name} {args.Exception.Message}");
 
                     return responder.RespondToRequests();
                 });
             }
 
-            Console.WriteLine("Listening on the queue...");
+            logger.WriteOutput("Listening on the queue...");
             await Task.WhenAll(consumers);
         }
 
