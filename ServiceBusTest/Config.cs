@@ -112,15 +112,8 @@ namespace ServiceBusTest
             {
                 if (ActionArgs.Length > 0)
                 {
-                    if (ActionArgs[0].ToLower() == "send")
-                    {
-                        stdout.WriteLine(string.Format("Usage: {0} send [options] [number of requests to send] [ms gap between requests]", System.Diagnostics.Process.GetCurrentProcess().ProcessName));
-                    }
-
-                    if (ActionArgs[0].ToLower() == "respond")
-                    {
-                        stdout.WriteLine(string.Format("Usage: {0} respond [options] [number of consumers to run]", System.Diagnostics.Process.GetCurrentProcess().ProcessName));
-                    }
+                    var help = GetSpecificHelp(ActionArgs[0]);
+                    stdout.WriteLine(help);
                 }
                 else stdout.WriteLine(GetHelp());
 
@@ -128,6 +121,22 @@ namespace ServiceBusTest
             }
 
             return true;
+        }
+
+        public static string GetSpecificHelp(string action)
+        {
+            action = action.ToLower();
+            if (action == "send")
+            {
+                return string.Format("Usage: {0} send [options] [number of requests to send] [ms gap between requests] [server url]", System.Diagnostics.Process.GetCurrentProcess().ProcessName);
+            }
+
+            if (action == "respond")
+            {
+                return string.Format("Usage: {0} respond [options] [number of consumers to run]", System.Diagnostics.Process.GetCurrentProcess().ProcessName);
+            }
+
+            throw new Exception($"Can't get help for action '{action}'");
         }
 
         public static string GetHelp()

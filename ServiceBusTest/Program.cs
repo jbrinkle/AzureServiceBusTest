@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Azure.ServiceBus;
@@ -14,6 +15,7 @@ namespace ServiceBusTest
     {
         private static readonly Dictionary<string, string> config = new Dictionary<string, string>();
         private static ConsoleLogger logger;
+        private static HttpClient httpClient;
 
         static void Main(string[] args)
         {
@@ -80,6 +82,9 @@ namespace ServiceBusTest
             // get number of requests to make
             var requestsToSend = GetNumberInActionArgs(0);
             var msDelayBetweenReqs = GetNumberInActionArgs(1);
+            var httpEndpoint = GetActionArg(2);
+
+            if (httpEndpoint != null) SetupHttpClient(httpEndpoint);
 
             var sender = factory.GetSender<GetLoanOptionsRequestPayload, GetLoanOptionsResponsePayload>();
             sender.RequestSending += (r,m) =>
@@ -100,10 +105,22 @@ namespace ServiceBusTest
                 };
 
                 var rememberI = i;
-                outstandingRequests[i] = sender.SendRequest(payload).ContinueWith(async t => {
-                    var response = await t;
-                    logger.WriteOutput($"{rememberI:000} RESPONSE: Provider = {response.Provider}, Loan = {response.LoanAmount}");
-                });
+                if (httpEndpoint == null)
+                {
+                    outstandingRequests[i] = sender.SendRequest(payload).ContinueWith(async t =>
+                    {
+                        var response = await t;
+                        logger.WriteOutput($"{rememberI:000} RESPONSE: Provider = {response.Provider}, Loan = {response.LoanAmount}");
+                    });
+                }
+                else
+                {
+                    outstandingRequests[i] = SendHttpRequest(payload).ContinueWith(async t =>
+                    {
+                        var response = await t;
+                        logger.WriteOutput($"{rememberI:000} RESPONSE: Provider = {response.Provider}, Loan = {response.LoanAmount}");
+                    });
+                }
 
                 await Task.Delay(msDelayBetweenReqs);
             }
@@ -111,10 +128,55 @@ namespace ServiceBusTest
             await Task.WhenAll(outstandingRequests);
             logger.Stop();
 
-            OutputAppMessage($"Average Round Trip Time (sec): {Math.Round(sender.AverageRTTms / 1000.0, 3)}");
-            OutputAppMessage($"Min Round Trip Time (sec): {Math.Round(sender.MinRTTms / 1000.0, 3)}");
-            OutputAppMessage($"Max Round Trip Time (sec): {Math.Round(sender.MaxRTTms / 1000.0, 3)}");
+            if (httpEndpoint == null)
+            {
+                OutputAppMessage($"Average Round Trip Time (sec): {Math.Round(sender.AverageRTTms / 1000.0, 3)}");
+                OutputAppMessage($"Min Round Trip Time (sec): {Math.Round(sender.MinRTTms / 1000.0, 3)}");
+                OutputAppMessage($"Max Round Trip Time (sec): {Math.Round(sender.MaxRTTms / 1000.0, 3)}"); 
+            }
+            else
+            {
+                OutputAppMessage($"Average Round Trip Time (sec): {Math.Round(SendOverHttp_AverageRTTms / 1000.0, 3)}");
+                OutputAppMessage($"Min Round Trip Time (sec): {Math.Round(SendOverHttp_MinRTTms / 1000.0, 3)}");
+                OutputAppMessage($"Max Round Trip Time (sec): {Math.Round(SendOverHttp_MaxRTTms / 1000.0, 3)}");
+            }
         }
+
+        static void SetupHttpClient(string baseAddress)
+        {
+            var uri = new Uri(baseAddress);
+
+            httpClient = new HttpClient();
+            httpClient.BaseAddress = uri;
+        }
+
+        static async Task<GetLoanOptionsResponsePayload> SendHttpRequest(GetLoanOptionsRequestPayload requestPayload)
+        {
+            var sw = new Stopwatch();
+            sw.Start();
+
+            var payload = JsonConvert.SerializeObject(requestPayload);
+
+            logger.WriteOutput($"{requestPayload.Id:000} REQUEST: CreditScore = {requestPayload.CreditScore}");
+
+            var message = new HttpRequestMessage(HttpMethod.Post, "");
+            message.Headers.Add("Accept", "application/json");
+            message.Content = new StringContent(payload, System.Text.Encoding.UTF8, "application/json");
+            var response = await httpClient.SendAsync(message);
+            var responsePayload = await response.Content.ReadAsStringAsync();
+            var options = JsonConvert.DeserializeObject<GetLoanOptionsResponsePayload>(responsePayload);
+
+            sw.Stop();
+            SendOverHttp_AverageRTTms = (SendOverHttp_AverageRTTms * SendOverHttp_SendCount + sw.ElapsedMilliseconds) / (++SendOverHttp_SendCount);
+            if (sw.ElapsedMilliseconds < SendOverHttp_MinRTTms || SendOverHttp_MinRTTms == 0) SendOverHttp_MinRTTms = sw.ElapsedMilliseconds;
+            if (sw.ElapsedMilliseconds > SendOverHttp_MaxRTTms) SendOverHttp_MaxRTTms = sw.ElapsedMilliseconds;
+
+            return options;
+        }
+        private static int SendOverHttp_SendCount = 0;
+        private static double SendOverHttp_AverageRTTms = 0.0;
+        private static double SendOverHttp_MinRTTms = 0.0;
+        private static double SendOverHttp_MaxRTTms = 0.0;
 
         static async Task RunConsumer(RequestResponseFactory factory)
         {
@@ -156,6 +218,8 @@ namespace ServiceBusTest
             }
             return number;
         }
+
+        static string GetActionArg(int index) => Config.ActionArgs.Skip(index).FirstOrDefault();
 
         static void OutputAppMessage(string message)
         {
