@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Azure.ServiceBus;
 using Newtonsoft.Json;
+using Vivint.ServiceBus;
 using Vivint.ServiceBus.RequestResponse;
 
 namespace ServiceBusTest
@@ -109,6 +110,16 @@ namespace ServiceBusTest
                 {
                     outstandingRequests[i] = sender.SendRequest(payload).ContinueWith(async t =>
                     {
+                        if (t.IsFaulted)
+                        {
+                            foreach (var e in t.Exception.InnerExceptions)
+                            {
+                                logger.WriteOutput($"{rememberI:000} Failure: {e.Message}");
+                            }
+
+                            return;
+                        }
+
                         var response = await t;
                         logger.WriteOutput($"{rememberI:000} RESPONSE: Provider = {response.Provider}, Loan = {response.LoanAmount}");
                     });
@@ -164,7 +175,7 @@ namespace ServiceBusTest
             message.Content = new StringContent(payload, System.Text.Encoding.UTF8, "application/json");
             var response = await httpClient.SendAsync(message);
             var responsePayload = await response.Content.ReadAsStringAsync();
-            var options = JsonConvert.DeserializeObject<GetLoanOptionsResponsePayload>(responsePayload);
+            var options = Helpers.Deserialize<GetLoanOptionsResponsePayload>(responsePayload);
 
             sw.Stop();
             SendOverHttp_AverageRTTms = (SendOverHttp_AverageRTTms * SendOverHttp_SendCount + sw.ElapsedMilliseconds) / (++SendOverHttp_SendCount);
