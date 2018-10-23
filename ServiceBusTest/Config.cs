@@ -114,7 +114,7 @@ namespace ServiceBusTest
                 {
                     if (ActionArgs[0].ToLower() == "send")
                     {
-                        stdout.WriteLine(string.Format("Usage: {0} send [options] [number of requests to send]", System.Diagnostics.Process.GetCurrentProcess().ProcessName));
+                        stdout.WriteLine(string.Format("Usage: {0} send [options] [number of requests to send] [ms gap between requests]", System.Diagnostics.Process.GetCurrentProcess().ProcessName));
                     }
 
                     if (ActionArgs[0].ToLower() == "respond")

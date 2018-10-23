@@ -56,10 +56,7 @@ namespace ServiceBusTest
 
         private static void Console_CancelKeyPress(object sender, ConsoleCancelEventArgs e)
         {
-            var origColor = Console.ForegroundColor;
-            Console.ForegroundColor = ConsoleColor.Yellow;
-            Console.WriteLine("Canceling operation...");
-            Console.ForegroundColor = origColor;
+            OutputAppMessage("Canceling operation...");
 
             if (logger?.IsActive ?? false)
             {
@@ -75,16 +72,14 @@ namespace ServiceBusTest
             await action();
             sw.Stop();
 
-            var origColor = Console.ForegroundColor;
-            Console.ForegroundColor = ConsoleColor.Yellow;
-            Console.WriteLine($"Execution time (sec): {sw.Elapsed.TotalSeconds}");
-            Console.ForegroundColor = origColor;
+            OutputAppMessage($"Execution time (sec): {sw.Elapsed.TotalSeconds}");
         }
 
         static async Task SendRequests(RequestResponseFactory factory)
         {
             // get number of requests to make
-            var requestsToSend = GetFirstNumberInActionArgs();
+            var requestsToSend = GetNumberInActionArgs(0);
+            var msDelayBetweenReqs = GetNumberInActionArgs(1);
 
             var sender = factory.GetSender<GetLoanOptionsRequestPayload, GetLoanOptionsResponsePayload>();
             sender.RequestSending += (r,m) =>
@@ -109,16 +104,22 @@ namespace ServiceBusTest
                     var response = await t;
                     logger.WriteOutput($"{rememberI:000} RESPONSE: Provider = {response.Provider}, Loan = {response.LoanAmount}");
                 });
+
+                await Task.Delay(msDelayBetweenReqs);
             }
 
             await Task.WhenAll(outstandingRequests);
             logger.Stop();
+
+            OutputAppMessage($"Average Round Trip Time (sec): {Math.Round(sender.AverageRTTms / 1000.0, 3)}");
+            OutputAppMessage($"Min Round Trip Time (sec): {Math.Round(sender.MinRTTms / 1000.0, 3)}");
+            OutputAppMessage($"Max Round Trip Time (sec): {Math.Round(sender.MaxRTTms / 1000.0, 3)}");
         }
 
         static async Task RunConsumer(RequestResponseFactory factory)
         {
             // get number of consumers to run
-            var consumerCount = GetFirstNumberInActionArgs();
+            var consumerCount = GetNumberInActionArgs(0);
 
             var consumers = new Task[consumerCount];
 
@@ -146,14 +147,22 @@ namespace ServiceBusTest
             await Task.WhenAll(consumers);
         }
 
-        static int GetFirstNumberInActionArgs()
+        static int GetNumberInActionArgs(int index)
         {
-            var arg = Config.ActionArgs.FirstOrDefault() ?? "1";
+            var arg = Config.ActionArgs.Skip(index).FirstOrDefault() ?? "1";
             if (!int.TryParse(arg, out int number))
             {
                 throw new Exception($"Value '{arg}' is not an integer");
             }
             return number;
+        }
+
+        static void OutputAppMessage(string message)
+        {
+            var origColor = Console.ForegroundColor;
+            Console.ForegroundColor = ConsoleColor.Yellow;
+            Console.WriteLine(message);
+            Console.ForegroundColor = origColor;
         }
     }
 }
