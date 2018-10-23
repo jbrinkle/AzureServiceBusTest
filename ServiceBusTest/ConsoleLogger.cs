@@ -11,6 +11,7 @@ namespace ServiceBusTest
         private readonly Thread consoleWriter;
         private readonly Queue<string> messages;
         private readonly TextWriter consoleOut;
+        private readonly object lockObj = "{lock}";
 
         public bool IsActive { get; private set; }
 
@@ -35,7 +36,13 @@ namespace ServiceBusTest
         
         public void WriteOutput(string message)
         {
-            messages.Enqueue(message);
+            ThreadPool.QueueUserWorkItem(state =>
+            {
+                lock (lockObj)
+                {
+                    messages.Enqueue(message);
+                }
+            }, null);
         }
 
         private void ConsoleWriterThread()
