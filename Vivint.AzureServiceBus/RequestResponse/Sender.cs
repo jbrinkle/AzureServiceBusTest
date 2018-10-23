@@ -31,14 +31,16 @@ namespace Vivint.ServiceBus.RequestResponse
             message.ReplyTo = receiveResponseQueueName;
             message.ReplyToSessionId = sessionId;
 
+            var sessionClient = new SessionClient(connectionStr, receiveResponseQueueName);
+            var messageSession = await sessionClient.AcceptMessageSessionAsync(sessionId);
+            var receiveTask = messageSession.ReceiveAsync(TimeSpan.FromSeconds(20));
+
             // SEND!
             RequestSending?.Invoke(request, message);
             await client.SendAsync(message);
 
             // RECEIVE!
-            var sessionClient = new SessionClient(connectionStr, receiveResponseQueueName);
-            var messageSession = await sessionClient.AcceptMessageSessionAsync(sessionId);
-            var responseMsg = await messageSession.ReceiveAsync(TimeSpan.FromSeconds(20));
+            var responseMsg = await receiveTask;
             await messageSession.CloseAsync();
 
             return Helpers.DecodeMessage<TResponse>(responseMsg);
